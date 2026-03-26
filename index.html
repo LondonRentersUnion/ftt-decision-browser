@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTT Decision Browser</title>
+    <link href="https://unpkg.com/tabulator-tables@6/dist/css/tabulator.min.css" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f5f5f5; }
+        h1 { font-size: 1.4em; margin-bottom: 4px; }
+        .subtitle { color: #666; margin-bottom: 16px; font-size: 0.9em; }
+        .subtitle a { color: #666; }
+        .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+        .controls label { font-weight: 600; font-size: 0.9em; }
+        .controls select, .controls input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9em; }
+        .controls input { flex: 1; min-width: 200px; }
+        #table-container { background: white; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stats { margin-top: 8px; color: #666; font-size: 0.85em; }
+        .view-link { color: #1d70b8; text-decoration: none; }
+        .view-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>FTT Decision Browser</h1>
+    <p class="subtitle"><a href="https://londonrentersunion.org/">London Renters Union</a> &mdash; Data &amp; Research Working Group</p>
+
+    <div class="controls">
+        <label for="dataset">Dataset:</label>
+        <select id="dataset">
+            <option value="fair-rent">Fair Rent</option>
+            <option value="market-rent">Market Rent</option>
+            <option value="rent-repayment-orders">Rent Repayment Orders</option>
+        </select>
+        <label for="search">Search:</label>
+        <input type="text" id="search" placeholder="Filter by postcode, address, name...">
+    </div>
+
+    <div id="table-container"></div>
+    <p class="stats" id="stats"></p>
+
+    <script src="https://unpkg.com/tabulator-tables@6/dist/js/tabulator.min.js"></script>
+    <script src="https://unpkg.com/papaparse@5/papaparse.min.js"></script>
+    <script>
+    const linkFormatter = (cell) => {
+        const url = cell.getValue();
+        if (!url) return "";
+        return `<a href="${url}" target="_blank" rel="noopener" class="view-link">View</a>`;
+    };
+
+    const moneyFormatter = (cell) => {
+        const val = cell.getValue();
+        if (!val && val !== 0) return "";
+        const num = parseFloat(String(val).replace(/,/g, ""));
+        if (isNaN(num)) return val;
+        return num.toLocaleString("en-GB", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    };
+
+    const moneySorter = (a, b) => {
+        const na = parseFloat(String(a).replace(/,/g, "")) || 0;
+        const nb = parseFloat(String(b).replace(/,/g, "")) || 0;
+        return na - nb;
+    };
+
+    const DATASETS = {
+        "fair-rent": {
+            file: "data/fair-rent.csv",
+            columns: [
+                {title: "Address", field: "address", headerFilter: true, minWidth: 200},
+                {title: "Postcode", field: "postcode", headerFilter: true, width: 100},
+                {title: "Decision", field: "listing_url", formatter: linkFormatter, width: 80, headerSort: false},
+                {title: "Borough", field: "borough", headerFilter: true, width: 140},
+                {title: "Fair Rent", field: "fair_rent", formatter: moneyFormatter, sorter: moneySorter, hozAlign: "right", width: 110},
+                {title: "Period", field: "rent_period", headerFilter: true, width: 120},
+                {title: "Effective Date", field: "effective_date", width: 130},
+                {title: "Landlord", field: "landlord", headerFilter: true, minWidth: 150},
+                {title: "Tenant", field: "tenant", headerFilter: true, minWidth: 150},
+                {title: "Tribunal", field: "tribunal_members", minWidth: 150},
+                {title: "Services", field: "services_amount", width: 100},
+                {title: "Capping", field: "capping_provisions", minWidth: 150},
+                {title: "Notes", field: "extraction_notes", width: 140},
+            ]
+        },
+        "market-rent": {
+            file: "data/market-rent.csv",
+            columns: [
+                {title: "Address", field: "address", headerFilter: true, minWidth: 200},
+                {title: "Postcode", field: "postcode", headerFilter: true, width: 100},
+                {title: "Decision", field: "listing_url", formatter: linkFormatter, width: 80, headerSort: false},
+                {title: "Borough", field: "borough", headerFilter: true, width: 140},
+                {title: "Market Rent", field: "market_rent", formatter: moneyFormatter, sorter: moneySorter, hozAlign: "right", width: 120},
+                {title: "Period", field: "rent_period", headerFilter: true, width: 120},
+                {title: "Effective Date", field: "effective_date", width: 130},
+                {title: "Landlord", field: "landlord", headerFilter: true, minWidth: 150},
+                {title: "Tenant", field: "tenant", headerFilter: true, minWidth: 150},
+                {title: "Description", field: "description_of_premises", minWidth: 200},
+                {title: "Tenancy Start", field: "tenancy_start_date", width: 120},
+                {title: "Tenancy Length", field: "tenancy_length", width: 130},
+                {title: "Repairs", field: "repairs_liability", width: 150},
+                {title: "Furniture", field: "furniture", width: 130},
+                {title: "Notes", field: "extraction_notes", width: 140},
+            ]
+        },
+        "rent-repayment-orders": {
+            file: "data/rent-repayment-orders.csv",
+            columns: [
+                {title: "Address", field: "property_address", headerFilter: true, minWidth: 200},
+                {title: "Postcode", field: "postcode", headerFilter: true, width: 100},
+                {title: "Decision", field: "listing_url", formatter: linkFormatter, width: 80, headerSort: false},
+                {title: "Borough", field: "borough", headerFilter: true, width: 140},
+                {title: "Awarded", field: "amount_awarded", formatter: moneyFormatter, sorter: moneySorter, hozAlign: "right", width: 110},
+                {title: "Sought", field: "amount_sought", formatter: moneyFormatter, sorter: moneySorter, hozAlign: "right", width: 110},
+                {title: "Decision Date", field: "decision_date", width: 120},
+                {title: "Applicants", field: "applicants", headerFilter: true, minWidth: 150},
+                {title: "Respondents", field: "respondents", headerFilter: true, minWidth: 150},
+                {title: "Council", field: "council_or_local_authority", headerFilter: true, width: 150},
+                {title: "Tribunal", field: "tribunal_members", minWidth: 150},
+                {title: "Award Details", field: "award_details", width: 150},
+                {title: "Notes", field: "extraction_notes", width: 140},
+            ]
+        }
+    };
+
+    let table = null;
+
+    function calcPageSize() {
+        // header ~60px, controls ~50px, stats ~30px, pagination ~40px, margins ~40px
+        const overhead = 220;
+        const rowHeight = 36;
+        const available = window.innerHeight - overhead;
+        return Math.max(5, Math.floor(available / rowHeight));
+    }
+
+    function loadDataset(name) {
+        const ds = DATASETS[name];
+        document.getElementById("stats").textContent = "Loading...";
+        document.getElementById("search").value = "";
+
+        Papa.parse(ds.file, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                if (table) table.destroy();
+
+                const pageSize = calcPageSize();
+
+                table = new Tabulator("#table-container", {
+                    data: results.data,
+                    columns: ds.columns,
+                    layout: "fitDataFill",
+                    pagination: true,
+                    paginationSize: pageSize,
+                    paginationSizeSelector: [10, 25, 50, 100, 250],
+                    movableColumns: true,
+                    resizableColumns: true,
+                    placeholder: "No matching records",
+                    initialSort: ds.columns[3] ? [{column: ds.columns[3].field, dir: "desc"}] : [],
+                });
+
+                table.on("dataFiltered", function(filters, rows) {
+                    document.getElementById("stats").textContent =
+                        `Showing ${rows.length} of ${results.data.length} rows`;
+                });
+
+                document.getElementById("stats").textContent =
+                    `Showing ${results.data.length} of ${results.data.length} rows`;
+            },
+            error: function(err) {
+                document.getElementById("stats").textContent = "Error loading data: " + err;
+            }
+        });
+    }
+
+    // Global search
+    document.getElementById("search").addEventListener("input", function() {
+        const val = this.value.toLowerCase();
+        if (!table) return;
+        if (!val) {
+            table.clearFilter();
+            return;
+        }
+        table.setFilter(function(data) {
+            return Object.values(data).some(v =>
+                v && String(v).toLowerCase().includes(val)
+            );
+        });
+    });
+
+    // Dataset switcher
+    document.getElementById("dataset").addEventListener("change", function() {
+        loadDataset(this.value);
+    });
+
+    // Load default
+    loadDataset("fair-rent");
+    </script>
+</body>
+</html>
